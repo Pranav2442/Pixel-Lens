@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Camera, Grid, X, Maximize2, Minimize2 } from "lucide-react";
 import {
   S3Client,
@@ -7,6 +7,81 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+const LazyImage = ({ src, alt, className, onClick }) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isInView, setIsInView] = useState(false);
+  const imgRef = useRef(null);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsInView(true);
+          observer.unobserve(entry.target);
+        }
+      },
+      {
+        root: null,
+        rootMargin: "0px",
+        threshold: 0.1 
+      }
+    );
+
+    if (imgRef.current) {
+      observer.observe(imgRef.current);
+    }
+
+    return () => {
+      if (imgRef.current) {
+        observer.unobserve(imgRef.current);
+      }
+    };
+  }, []);
+
+  const handleImageLoad = () => {
+    setIsLoaded(true);
+  };
+
+  return (
+    <div 
+      ref={imgRef} 
+      className={`relative w-full h-full overflow-hidden ${className}`}
+    >
+      {isInView && (
+        <img
+          src={src}
+          alt={alt}
+          onLoad={handleImageLoad}
+          onClick={onClick}
+          className={`
+            object-cover w-full h-full transform 
+            ${!isLoaded ? 'opacity-0' : 'opacity-100'}
+            transition-opacity duration-500 ease-in-out
+          `}
+          loading="lazy"
+        />
+      )}
+      {!isLoaded && isInView && (
+        <div className="absolute inset-0 bg-white/5 animate-pulse" />
+      )}
+    </div>
+  );
+};
+
+const createImageCache = () => {
+  const cache = new Map();
+  
+  return {
+    get: (key) => cache.get(key),
+    set: (key, value) => cache.set(key, value),
+    has: (key) => cache.has(key),
+    clear: () => cache.clear()
+  };
+};
+
+const imageUrlCache = createImageCache();
+const IMAGE_URL_EXPIRATION = 3600000;
+
 const PhotoGallery = () => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [layout, setLayout] = useState("grid");
@@ -14,29 +89,44 @@ const PhotoGallery = () => {
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lightboxRef = useRef(null);
-
-  const s3Client = new S3Client({
+  
+  const s3Client = useMemo(() => new S3Client({
     region: "auto",
-    endpoint: `https://${
-      import.meta.env.VITE_ACCOUNT_ID
-    }.r2.cloudflarestorage.com`,
+    endpoint: `https://${import.meta.env.VITE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId: import.meta.env.VITE_ACCESS_KEY_ID,
       secretAccessKey: import.meta.env.VITE_SECRET_ACCESS_KEY,
     },
     forcePathStyle: true,
-  });
+  }), []);
 
   const BUCKET_NAME = import.meta.env.VITE_BUCKET_NAME;
 
-  const getImageUrl = async (key) => {
-    const command = new GetObjectCommand({
-      Bucket: BUCKET_NAME,
-      Key: key,
-    });
+  const getImageUrl = useCallback(async (key) => {
+    const cachedEntry = imageUrlCache.get(key);
+    if (cachedEntry && (Date.now() - cachedEntry.timestamp) < IMAGE_URL_EXPIRATION) {
+      return cachedEntry.url;
+    }
 
-    return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-  };
+    try {
+      const command = new GetObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+      });
+
+      const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+      
+      imageUrlCache.set(key, { 
+        url, 
+        timestamp: Date.now() 
+      });
+
+      return url;
+    } catch (error) {
+      console.error(`Error getting URL for ${key}:`, error);
+      return null;
+    }
+  }, [s3Client, BUCKET_NAME]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -71,48 +161,47 @@ const PhotoGallery = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedImage]);
 
-  useEffect(() => {
-    const loadImagesFromS3 = async () => {
-      try {
-        setLoading(true);
+  const loadImagesFromS3 = useCallback(async () => {
+    try {
+      setLoading(true);
 
-        const command = new ListObjectsV2Command({
-          Bucket: BUCKET_NAME,
-        });
+      const command = new ListObjectsV2Command({
+        Bucket: BUCKET_NAME,
+      });
 
-        const response = await s3Client.send(command);
+      const response = await s3Client.send(command);
 
-        if (!response.Contents) {
-          setImages([]);
-          setLoading(false);
-          return;
-        }
-
-        
-        const imagePromises = response.Contents.map(async (object) => {
-          const url = await getImageUrl(object.Key);
-          return {
-            id: object.Key,
-            url: url,
-            lastModified: object.LastModified,
-          };
-        });
-
-        const processedImages = await Promise.all(imagePromises);
-        const sortedImages = processedImages.sort(
-          (a, b) => b.lastModified.getTime() - a.lastModified.getTime()
-        );
-
-        setImages(sortedImages);
+      if (!response.Contents) {
+        setImages([]);
         setLoading(false);
-      } catch (error) {
-        console.error("Error loading images from S3:", error);
-        setLoading(false);
+        return;
       }
-    };
+      
+      const imagePromises = response.Contents.map(async (object) => {
+        const url = await getImageUrl(object.Key);
+        return url ? {
+          id: object.Key,
+          url: url,
+          lastModified: object.LastModified,
+        } : null;
+      });
 
+      const processedImages = await Promise.all(imagePromises);
+      const filteredImages = processedImages
+        .filter(image => image !== null)
+        .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+
+      setImages(filteredImages);
+      setLoading(false);
+    } catch (error) {
+      console.error("Error loading images from S3:", error);
+      setLoading(false);
+    }
+  }, [s3Client, BUCKET_NAME, getImageUrl]);
+
+  useEffect(() => {
     loadImagesFromS3();
-  }, []);
+  }, [loadImagesFromS3]);
 
   const handleFullscreen = async (e) => {
     e.stopPropagation();
@@ -284,11 +373,11 @@ const PhotoGallery = () => {
                 className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5 cursor-pointer transform hover:-translate-y-1 transition-all duration-300 border border-white/5 shadow-lg shadow-purple-900/20"
                 onClick={() => setSelectedImage(image)}
               >
-                <img
+                <LazyImage
                   src={image.url}
                   alt="gallery"
                   className="object-cover w-full h-full transform group-hover:scale-110 transition-transform duration-500"
-                  loading="lazy"
+                  onClick={() => setSelectedImage(image)}
                 />
                 
                 <div className="absolute bottom-1 left-1 z-10">
