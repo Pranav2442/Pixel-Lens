@@ -1,0 +1,18 @@
+{
+    "CORSRules": [
+        {
+            "AllowedOrigins": [
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "https://shutter-stories.netlify.app",
+                "https://shutter-stories.netlify.app/",
+                "https://pixel-lens.netlify.app/",
+                "https://pixel-lens.netlify.app"
+            ],
+            "AllowedMethods": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+            "AllowedHeaders": ["*"],
+            "ExposeHeaders": ["ETag"],
+            "MaxAgeSeconds": 3600
+        }
+    ]
+}
