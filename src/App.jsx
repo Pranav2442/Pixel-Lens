@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useMemo,
+  useCallback,
+} from "react";
 import { Camera, Grid, X, Maximize2, Minimize2 } from "lucide-react";
 import {
   S3Client,
@@ -23,7 +29,7 @@ const LazyImage = ({ src, alt, className, onClick }) => {
       {
         root: null,
         rootMargin: "0px",
-        threshold: 0.1 
+        threshold: 0.1,
       }
     );
 
@@ -43,8 +49,8 @@ const LazyImage = ({ src, alt, className, onClick }) => {
   };
 
   return (
-    <div 
-      ref={imgRef} 
+    <div
+      ref={imgRef}
       className={`relative w-full h-full overflow-hidden ${className}`}
     >
       {isInView && (
@@ -55,7 +61,7 @@ const LazyImage = ({ src, alt, className, onClick }) => {
           onClick={onClick}
           className={`
             object-cover w-full h-full transform 
-            ${!isLoaded ? 'opacity-0' : 'opacity-100'}
+            ${!isLoaded ? "opacity-0" : "opacity-100"}
             transition-opacity duration-500 ease-in-out
           `}
           loading="lazy"
@@ -70,12 +76,12 @@ const LazyImage = ({ src, alt, className, onClick }) => {
 
 const createImageCache = () => {
   const cache = new Map();
-  
+
   return {
     get: (key) => cache.get(key),
     set: (key, value) => cache.set(key, value),
     has: (key) => cache.has(key),
-    clear: () => cache.clear()
+    clear: () => cache.clear(),
   };
 };
 
@@ -89,44 +95,62 @@ const PhotoGallery = () => {
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lightboxRef = useRef(null);
-  
-  const s3Client = useMemo(() => new S3Client({
-    region: "auto",
-    endpoint: `https://${import.meta.env.VITE_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-    credentials: {
-      accessKeyId: import.meta.env.VITE_ACCESS_KEY_ID,
-      secretAccessKey: import.meta.env.VITE_SECRET_ACCESS_KEY,
-    },
-    forcePathStyle: true,
-  }), []);
+  const [showFavorites, setShowFavorites] = useState(false);
+
+  const [favorites, setFavorites] = useState(() => {
+    const savedFavorites = localStorage.getItem("pixelLens-favorites");
+    return savedFavorites ? JSON.parse(savedFavorites) : [];
+  });
+
+  const s3Client = useMemo(
+    () =>
+      new S3Client({
+        region: "auto",
+        endpoint: `https://${
+          import.meta.env.VITE_ACCOUNT_ID
+        }.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: import.meta.env.VITE_ACCESS_KEY_ID,
+          secretAccessKey: import.meta.env.VITE_SECRET_ACCESS_KEY,
+        },
+        forcePathStyle: true,
+      }),
+    []
+  );
 
   const BUCKET_NAME = import.meta.env.VITE_BUCKET_NAME;
 
-  const getImageUrl = useCallback(async (key) => {
-    const cachedEntry = imageUrlCache.get(key);
-    if (cachedEntry && (Date.now() - cachedEntry.timestamp) < IMAGE_URL_EXPIRATION) {
-      return cachedEntry.url;
-    }
+  const getImageUrl = useCallback(
+    async (key) => {
+      const cachedEntry = imageUrlCache.get(key);
+      if (
+        cachedEntry &&
+        Date.now() - cachedEntry.timestamp < IMAGE_URL_EXPIRATION
+      ) {
+        return cachedEntry.url;
+      }
 
-    try {
-      const command = new GetObjectCommand({
-        Bucket: BUCKET_NAME,
-        Key: key,
-      });
+      try {
+        const command = new GetObjectCommand({
+          Bucket: BUCKET_NAME,
+          Key: key,
+        });
 
-      const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
-      
-      imageUrlCache.set(key, { 
-        url, 
-        timestamp: Date.now() 
-      });
+        const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
-      return url;
-    } catch (error) {
-      console.error(`Error getting URL for ${key}:`, error);
-      return null;
-    }
-  }, [s3Client, BUCKET_NAME]);
+        imageUrlCache.set(key, {
+          url,
+          timestamp: Date.now(),
+        });
+
+        return url;
+      } catch (error) {
+        console.error(`Error getting URL for ${key}:`, error);
+        return null;
+      }
+    },
+    [s3Client, BUCKET_NAME]
+  );
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -176,19 +200,21 @@ const PhotoGallery = () => {
         setLoading(false);
         return;
       }
-      
+
       const imagePromises = response.Contents.map(async (object) => {
         const url = await getImageUrl(object.Key);
-        return url ? {
-          id: object.Key,
-          url: url,
-          lastModified: object.LastModified,
-        } : null;
+        return url
+          ? {
+              id: object.Key,
+              url: url,
+              lastModified: object.LastModified,
+            }
+          : null;
       });
 
       const processedImages = await Promise.all(imagePromises);
       const filteredImages = processedImages
-        .filter(image => image !== null)
+        .filter((image) => image !== null)
         .sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
 
       setImages(filteredImages);
@@ -227,9 +253,22 @@ const PhotoGallery = () => {
     setSelectedImage(null);
   };
 
+  const toggleFavorite = (e, imageId) => {
+    e.stopPropagation(); 
+    setFavorites((prev) => {
+      const newFavorites = prev.includes(imageId)
+        ? prev.filter((id) => id !== imageId)
+        : [...prev, imageId];
+
+      localStorage.setItem("pixelLens-favorites", JSON.stringify(newFavorites));
+      return newFavorites;
+    });
+  };
+
+  const isFavorite = (imageId) => favorites.includes(imageId);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1F1F3C] to-[#2D1B3D]">
-      
       <header className="fixed top-0 left-0 right-0 z-40 bg-[#1F1F3C]/80 backdrop-blur-lg border-b border-white/10">
         <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
@@ -240,7 +279,7 @@ const PhotoGallery = () => {
               <h1 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-purple-400 bg-clip-text text-transparent">
                 Pixel Lens
               </h1>
-              
+
               <div className="flex items-center space-x-3 ml-3 sm:ml-6">
                 <a
                   href="https://github.com/pranav2442"
@@ -285,46 +324,73 @@ const PhotoGallery = () => {
               </div>
             </div>
 
-            <button
-              onClick={() => setLayout(layout === "grid" ? "masonry" : "grid")}
-              className="flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white/5 rounded-lg"
-            >
-              {layout === "grid" ? (
+            <div className="flex items-center space-x-2">
+              {" "}
+              <button
+                onClick={() => setShowFavorites(!showFavorites)}
+                className={`flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg 
+                  transition-all duration-300 ease-out transform hover:scale-105 active:scale-95
+                  ${
+                    showFavorites
+                      ? "bg-red-500/20 text-red-500"
+                      : "bg-white/5 text-white/70 hover:bg-white/10"
+                  }`}
+              >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
                   viewBox="0 0 24 24"
-                  fill="none"
+                  fill={showFavorites ? "currentColor" : "none"}
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="text-white"
+                  className="w-4 h-4"
                 >
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <path d="M12 3v18" />
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                 </svg>
-              ) : (
-                <Grid className="h-4 w-4 text-white" />
-              )}
-              <span className="hidden sm:inline text-white">
-                {layout === "grid" ? "Masonry" : "Grid"}
-              </span>
-            </button>
+                <span className="hidden sm:inline">
+                  {favorites.length} Favorites
+                </span>
+              </button>
+              <button
+                onClick={() =>
+                  setLayout(layout === "grid" ? "masonry" : "grid")
+                }
+                className="flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white/5 rounded-lg"
+              >
+                {layout === "grid" ? (
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="text-white"
+                  >
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <path d="M12 3v18" />
+                  </svg>
+                ) : (
+                  <Grid className="h-4 w-4 text-white" />
+                )}
+                <span className="hidden sm:inline text-white">
+                  {layout === "grid" ? "Masonry" : "Grid"}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
 
-      
       <main className="pt-16 sm:pt-20 px-4 sm:px-6 pb-8 sm:pb-12 max-w-[2000px] mx-auto">
         {loading ? (
           <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#1F1F3C]/50 backdrop-blur-sm z-30">
-            
             <div className="relative">
-              
               <div className="w-16 h-12 sm:w-20 sm:h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg relative animate-pulse">
-                
                 <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-8 h-8 sm:w-10 sm:h-10 bg-gray-800 rounded-full">
                   <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-6 h-6 sm:w-8 sm:h-8 bg-gray-700 rounded-full animate-spin">
                     <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-4 h-4 sm:w-6 sm:h-6 bg-gray-600 rounded-full">
@@ -332,10 +398,10 @@ const PhotoGallery = () => {
                     </div>
                   </div>
                 </div>
-                
+
                 <div className="absolute -top-1 right-2 w-3 h-3 sm:w-4 sm:h-4 bg-yellow-400 rounded-full animate-pulse"></div>
               </div>
-              
+
               <div className="absolute left-1/2 transform -translate-x-1/2 mt-6 text-white/70 text-sm sm:text-base font-medium whitespace-nowrap">
                 Loading Gallery
                 <span className="inline-block animate-bounce">.</span>
@@ -354,6 +420,25 @@ const PhotoGallery = () => {
               </div>
             </div>
           </div>
+        ) : showFavorites && favorites.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-[50vh] text-white/60 transform transition-all duration-300 ease-out">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="h-16 w-16 mb-4 text-red-500/50 animate-pulse"
+            >
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+            <p className="text-lg sm:text-xl mb-2 transition-all duration-300 ease-out">
+              No favorite images yet
+            </p>
+            <p className="text-sm text-white/40 transition-all duration-300 ease-out">
+              Click the heart icon on any image to add it to your favorites
+            </p>
+          </div>
         ) : images.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-[50vh] text-white/60">
             <Camera className="h-12 w-12 sm:h-16 sm:w-16 mb-4" />
@@ -361,81 +446,111 @@ const PhotoGallery = () => {
           </div>
         ) : (
           <div
-            className={`grid ${
+            className={`grid gap-6 transition-all duration-300 ease-out ${
               layout === "grid"
                 ? "gap-6 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
                 : "gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
             }`}
           >
-            {images.map((image) => (
-              <div
-                key={image.id}
-                className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5 cursor-pointer transform hover:-translate-y-1 transition-all duration-300 border border-white/5 shadow-lg shadow-purple-900/20"
-                onClick={() => setSelectedImage(image)}
-              >
-                <LazyImage
-                  src={image.url}
-                  alt="gallery"
-                  className="object-cover w-full h-full transform group-hover:scale-110 transition-transform duration-500"
-                  onClick={() => setSelectedImage(image)}
-                />
-                
-                <div className="absolute bottom-1 left-1 z-10">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const shareUrl =
-                        window.location.origin +
-                        "?image=" +
-                        encodeURIComponent(image.id);
+            {images
+              .filter((image) => !showFavorites || favorites.includes(image.id))
+              .map((image, index) => (
+                <div
+                  key={image.id}
+                  className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5 cursor-pointer transform hover:-translate-y-1 transition-all duration-300 border border-white/5 shadow-lg shadow-purple-900/20 animate-fadeIn"
+                  onClick={() => handleImageClick(image)}
+                >
+                  <LazyImage
+                    src={image.url}
+                    alt="gallery"
+                    className="object-cover w-full h-full transform group-hover:scale-110 transition-transform duration-500"
+                    onClick={() => setSelectedImage(image)}
+                  />
 
-                      if (navigator.share) {
-                        navigator
-                          .share({
-                            title: "✨ Found this gem on PixelLens",
-                            text: "Explore the visual journey at PixelLens",
-                            url: shareUrl,
-                          })
-                          .catch(console.error);
-                      } else {
-                        navigator.clipboard
-                          .writeText(shareUrl)
-                          .then(() => {
-                            const tooltip = document.createElement("div");
-                            tooltip.textContent = "Link copied!";
-                            tooltip.className =
-                              "fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-50";
-                            document.body.appendChild(tooltip);
-                            setTimeout(() => tooltip.remove(), 2000);
-                          })
-                          .catch(console.error);
-                      }
-                    }}
-                    className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full backdrop-blur-sm transition-colors group-hover:bg-black/70"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="text-white sm:w-4 sm:h-4"
+                  <div className="absolute bottom-1 left-1 z-10">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const shareUrl =
+                          window.location.origin +
+                          "?image=" +
+                          encodeURIComponent(image.id);
+
+                        if (navigator.share) {
+                          navigator
+                            .share({
+                              title: "✨ Found this gem on PixelLens",
+                              text: "Explore the visual journey at PixelLens",
+                              url: shareUrl,
+                            })
+                            .catch(console.error);
+                        } else {
+                          navigator.clipboard
+                            .writeText(shareUrl)
+                            .then(() => {
+                              const tooltip = document.createElement("div");
+                              tooltip.textContent = "Link copied!";
+                              tooltip.className =
+                                "fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-50";
+                              document.body.appendChild(tooltip);
+                              setTimeout(() => tooltip.remove(), 2000);
+                            })
+                            .catch(console.error);
+                        }
+                      }}
+                      className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full backdrop-blur-sm transition-colors group-hover:bg-black/70"
                     >
-                      <circle cx="18" cy="5" r="3" />
-                      <circle cx="6" cy="12" r="3" />
-                      <circle cx="18" cy="19" r="3" />
-                      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                      <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                    </svg>
-                  </button>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-white sm:w-4 sm:h-4"
+                      >
+                        <circle cx="18" cy="5" r="3" />
+                        <circle cx="6" cy="12" r="3" />
+                        <circle cx="18" cy="19" r="3" />
+                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="absolute top-1 right-1 z-10">
+                    <button
+                      onClick={(e) => toggleFavorite(e, image.id)}
+                      className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
+                    ${
+                      isFavorite(image.id)
+                        ? "bg-red-500/50 hover:bg-red-500/70"
+                        : "bg-black/50 hover:bg-black/70"
+                    }`}
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                          isFavorite(image.id) ? "text-white" : "text-white"
+                        }`}
+                      >
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-t from-purple-900/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-purple-900/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              </div>
-            ))}
+              ))}
           </div>
         )}
         <footer className="relative w-full backdrop-blur-sm border-t border-white/10 mt-8">
@@ -451,7 +566,6 @@ const PhotoGallery = () => {
         </footer>
       </main>
 
-      
       {selectedImage && (
         <div ref={lightboxRef} className="fixed inset-0 z-50">
           <div
@@ -460,6 +574,29 @@ const PhotoGallery = () => {
           />
 
           <div className="absolute top-4 sm:top-6 right-4 sm:right-6 flex items-center space-x-3 sm:space-x-4 z-50">
+            <button
+              onClick={(e) => toggleFavorite(e, selectedImage.id)}
+              className={`p-2 sm:p-3 rounded-full transition-all duration-300 
+               ${
+                 isFavorite(selectedImage.id)
+                   ? "bg-red-500/50 hover:bg-red-500/70"
+                   : "bg-black/50 hover:bg-black/70"
+               }`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill={isFavorite(selectedImage.id) ? "currentColor" : "none"}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-5 w-5 sm:h-6 sm:w-6 text-white"
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </button>
+
             <button
               onClick={handleFullscreen}
               className="p-2 sm:p-3 bg-black/50 rounded-full"
