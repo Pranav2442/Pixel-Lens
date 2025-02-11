@@ -35,10 +35,29 @@ body {
 }
 
 h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+  background: linear-gradient(
+    to right,
+    #ff0000,
+    #ff8800,
+    #ffd000,
+    #00ff66,
+    #00ffff,
+    #0066ff,
+    #a200ff,
+    #ff00ff,
+    #ff0000
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  background-size: 400% 100%;
+  animation: gradient-flow 4s linear infinite;
 }
 
+@keyframes gradient-flow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 400% 50%; }
+}
 button {
   border-radius: 8px;
   border: 1px solid transparent;

@@ -13,6 +13,42 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+const AnimatedGradient = ({ text }) => {
+  return (
+    <div className="flex items-center justify-center h-96 bg-slate-900">
+      <div className="animate-gradient-text text-6xl font-bold">{text}</div>
+      <style jsx>{`
+        .animate-gradient-text {
+          background: linear-gradient(
+            to right,
+            #6366f1,
+            #ec4899,
+            #8b5cf6,
+            #6366f1
+          );
+          -webkit-background-clip: text;
+          background-clip: text;
+          color: transparent;
+          background-size: 300% 100%;
+          animation: gradient-flow 8s ease infinite;
+        }
+
+        @keyframes gradient-flow {
+          0% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+          100% {
+            background-position: 0% 50%;
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 const LazyImage = ({ src, alt, className, onClick }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(false);
@@ -361,7 +397,7 @@ const PhotoGallery = () => {
                         favorites.length !== 1 ? "s" : ""
                       }`}
                 </span>
-                
+
                 {favorites.length > 0 && !showFavorites && (
                   <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full sm:hidden" />
                 )}
@@ -370,7 +406,16 @@ const PhotoGallery = () => {
                 onClick={() =>
                   setLayout(layout === "grid" ? "masonry" : "grid")
                 }
-                className="flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-white/5 rounded-lg"
+                className={`flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg 
+    transition-all duration-300 ease-out transform hover:scale-105 active:scale-95
+    ${
+      layout === "grid"
+        ? "bg-purple-500/20 text-purple-500"
+        : "bg-white/5 text-white/70 hover:bg-white/10"
+    }`}
+                title={
+                  layout === "grid" ? "Switch to Masonry" : "Switch to Grid"
+                } // Tooltip for mobile
               >
                 {layout === "grid" ? (
                   <svg
@@ -383,16 +428,16 @@ const PhotoGallery = () => {
                     strokeWidth="2"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className="text-white"
+                    className="w-4 h-4 transition-transform duration-300"
                   >
                     <rect x="3" y="3" width="18" height="18" rx="2" />
                     <path d="M12 3v18" />
                   </svg>
                 ) : (
-                  <Grid className="h-4 w-4 text-white" />
+                  <Grid className="w-4 h-4 transition-transform duration-300" />
                 )}
-                <span className="hidden sm:inline text-white">
-                  {layout === "grid" ? "Masonry" : "Grid"}
+                <span className="hidden sm:inline">
+                  {layout === "grid" ? "Masonry View" : "Grid View"}
                 </span>
               </button>
             </div>
