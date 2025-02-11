@@ -162,18 +162,6 @@ const PhotoGallery = () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  const toggleFullscreen = async () => {
-    try {
-      if (!isFullscreen) {
-        await lightboxRef.current.requestFullscreen();
-      } else {
-        await document.exitFullscreen();
-      }
-    } catch (error) {
-      console.error("Error toggling fullscreen:", error);
-    }
-  };
-
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape" && selectedImage) {
@@ -254,7 +242,7 @@ const PhotoGallery = () => {
   };
 
   const toggleFavorite = (e, imageId) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     setFavorites((prev) => {
       const newFavorites = prev.includes(imageId)
         ? prev.filter((id) => id !== imageId)
@@ -266,6 +254,11 @@ const PhotoGallery = () => {
   };
 
   const isFavorite = (imageId) => favorites.includes(imageId);
+
+  const handleImageClick = async (image) => {
+    const fullSizeUrl = await getImageUrl(image.id, true);
+    setSelectedImage({ ...image, url: fullSizeUrl });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1F1F3C] to-[#2D1B3D]">
@@ -334,23 +327,44 @@ const PhotoGallery = () => {
                     showFavorites
                       ? "bg-red-500/20 text-red-500"
                       : "bg-white/5 text-white/70 hover:bg-white/10"
-                  }`}
+                  }
+                  ${
+                    favorites.length > 0 ? "ring-2 ring-red-500/20" : ""
+                  } // Indication that there are favorites
+                `}
+                title={`${favorites.length} favorite${
+                  favorites.length !== 1 ? "s" : ""
+                }`}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
-                  fill={showFavorites ? "currentColor" : "none"}
+                  fill={
+                    showFavorites || favorites.length > 0
+                      ? "currentColor"
+                      : "none"
+                  }
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="w-4 h-4"
+                  className={`w-4 h-4 ${
+                    favorites.length > 0 ? "animate-pulse" : ""
+                  }`}
                 >
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                 </svg>
                 <span className="hidden sm:inline">
-                  {favorites.length} Favorites
+                  {showFavorites
+                    ? "Show All Photos"
+                    : `${favorites.length} Favorite${
+                        favorites.length !== 1 ? "s" : ""
+                      }`}
                 </span>
+                
+                {favorites.length > 0 && !showFavorites && (
+                  <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full sm:hidden" />
+                )}
               </button>
               <button
                 onClick={() =>
