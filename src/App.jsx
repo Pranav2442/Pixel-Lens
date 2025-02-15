@@ -13,42 +13,6 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const AnimatedGradient = ({ text }) => {
-  return (
-    <div className="flex items-center justify-center h-96 bg-slate-900">
-      <div className="animate-gradient-text text-6xl font-bold">{text}</div>
-      <style jsx>{`
-        .animate-gradient-text {
-          background: linear-gradient(
-            to right,
-            #6366f1,
-            #ec4899,
-            #8b5cf6,
-            #6366f1
-          );
-          -webkit-background-clip: text;
-          background-clip: text;
-          color: transparent;
-          background-size: 300% 100%;
-          animation: gradient-flow 8s ease infinite;
-        }
-
-        @keyframes gradient-flow {
-          0% {
-            background-position: 0% 50%;
-          }
-          50% {
-            background-position: 100% 50%;
-          }
-          100% {
-            background-position: 0% 50%;
-          }
-        }
-      `}</style>
-    </div>
-  );
-};
-
 const LazyImage = ({
   src,
   alt,
@@ -189,7 +153,7 @@ const PhotoGallery = () => {
         });
       } else {
         await navigator.clipboard.writeText(shareUrl);
-        // Show copied notification
+        
         const tooltip = document.createElement("div");
         tooltip.textContent = "Link copied!";
         tooltip.className =
@@ -206,9 +170,9 @@ const PhotoGallery = () => {
     const aspectRatio = width / height;
 
     if (aspectRatio < 0.8) {
-      return { colSpan: 1, rowSpan: 2 }; // Take up 2 rows
+      return { colSpan: 1, rowSpan: 2 }; 
     } else if (aspectRatio > 1.8) {
-      return { colSpan: 2, rowSpan: 1 }; // Take up 2 columns
+      return { colSpan: 2, rowSpan: 1 }; 
     } else {
       return { colSpan: 1, rowSpan: 1 };
     }
