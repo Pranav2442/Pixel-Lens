@@ -49,10 +49,10 @@ const AnimatedGradient = ({ text }) => {
   );
 };
 
-const LazyImage = ({ src, alt, className, onClick }) => {
+const LazyImage = ({ src, alt, className, onClick, onLoad, imageRef, style }) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(false);
-  const imgRef = useRef(null);
+  const elementRef = useRef(null);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -64,47 +64,54 @@ const LazyImage = ({ src, alt, className, onClick }) => {
       },
       {
         root: null,
-        rootMargin: "0px",
+        rootMargin: "50px",
         threshold: 0.1,
       }
     );
 
-    if (imgRef.current) {
-      observer.observe(imgRef.current);
+    if (elementRef.current) {
+      observer.observe(elementRef.current);
     }
 
     return () => {
-      if (imgRef.current) {
-        observer.unobserve(imgRef.current);
+      if (elementRef.current) {
+        observer.unobserve(elementRef.current);
       }
     };
   }, []);
 
-  const handleImageLoad = () => {
+  const handleImageLoad = (e) => {
     setIsLoaded(true);
+    if (onLoad) {
+      onLoad(e);
+    }
   };
 
   return (
     <div
-      ref={imgRef}
-      className={`relative w-full h-full overflow-hidden ${className}`}
+      ref={elementRef}
+      className={`relative bg-[#1F1F3C] ${className}`}
+      style={style}
     >
       {isInView && (
         <img
+          ref={imageRef}
           src={src}
           alt={alt}
           onLoad={handleImageLoad}
           onClick={onClick}
           className={`
-            object-cover w-full h-full transform 
-            ${!isLoaded ? "opacity-0" : "opacity-100"}
+            w-full h-auto
+            ${!isLoaded ? 'opacity-0' : 'opacity-100'}
             transition-opacity duration-500 ease-in-out
           `}
           loading="lazy"
         />
       )}
       {!isLoaded && isInView && (
-        <div className="absolute inset-0 bg-white/5 animate-pulse" />
+        <div className="absolute inset-0 bg-[#1F1F3C] animate-pulse">
+        <div className="w-full h-full bg-white/5 rounded-lg" />
+      </div>
       )}
     </div>
   );
@@ -132,6 +139,36 @@ const PhotoGallery = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lightboxRef = useRef(null);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [imageDetails, setImageDetails] = useState({});
+  const [columns, setColumns] = useState(4);
+
+  const calculateImageSpans = useCallback((width, height) => {
+    const aspectRatio = width / height;
+    
+    
+    if (aspectRatio < 0.8) {
+      return { colSpan: 1, rowSpan: 2 }; // Take up 2 rows
+    }
+    
+    else if (aspectRatio > 1.8) {
+      return { colSpan: 2, rowSpan: 1 }; // Take up 2 columns
+    }
+    
+    else {
+      return { colSpan: 1, rowSpan: 1 };
+    }
+  }, []);
+
+  const updateImageDetails = useCallback((imageId, width, height) => {
+    setImageDetails(prev => ({
+      ...prev,
+      [imageId]: {
+        width,
+        height,
+        ...calculateImageSpans(width, height)
+      }
+    }));
+  }, [calculateImageSpans]);
 
   const [favorites, setFavorites] = useState(() => {
     const savedFavorites = localStorage.getItem("pixelLens-favorites");
@@ -296,10 +333,39 @@ const PhotoGallery = () => {
     setSelectedImage({ ...image, url: fullSizeUrl });
   };
 
+  const updateColumns = useCallback(() => {
+    const width = window.innerWidth;
+    if (width < 640) setColumns(1);
+    else if (width < 1024) setColumns(2);
+    else if (width < 1280) setColumns(3);
+    else setColumns(4);
+  }, []);
+
+  useEffect(() => {
+    updateColumns();
+    window.addEventListener('resize', updateColumns);
+    return () => window.removeEventListener('resize', updateColumns);
+  }, [updateColumns]);
+
+  // Organize images into columns
+  const columnedImages = useMemo(() => {
+    if (!images.length) return [];
+    
+    // Initialize columns
+    const cols = Array(columns).fill().map(() => []);
+    
+    // Distribute images across columns
+    images.forEach((image, index) => {
+      cols[index % columns].push(image);
+    });
+    
+    return cols;
+  }, [images, columns]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1F1F3C] to-[#2D1B3D]">
       <header className="fixed top-0 left-0 right-0 z-40 bg-[#1F1F3C]/80 backdrop-blur-lg border-b border-white/10">
-        <div className="w-full max-w-[2000px] mx-auto px-4 sm:px-6 py-3 sm:py-4">
+        <div className="w-full  mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 sm:space-x-3">
               <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg p-1.5 sm:p-2">
@@ -402,50 +468,13 @@ const PhotoGallery = () => {
                   <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full sm:hidden" />
                 )}
               </button>
-              <button
-                onClick={() =>
-                  setLayout(layout === "grid" ? "masonry" : "grid")
-                }
-                className={`flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg 
-    transition-all duration-300 ease-out transform hover:scale-105 active:scale-95
-    ${
-      layout === "grid"
-        ? "bg-purple-500/20 text-purple-500"
-        : "bg-white/5 text-white/70 hover:bg-white/10"
-    }`}
-                title={
-                  layout === "grid" ? "Switch to Masonry" : "Switch to Grid"
-                } // Tooltip for mobile
-              >
-                {layout === "grid" ? (
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="w-4 h-4 transition-transform duration-300"
-                  >
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <path d="M12 3v18" />
-                  </svg>
-                ) : (
-                  <Grid className="w-4 h-4 transition-transform duration-300" />
-                )}
-                <span className="hidden sm:inline">
-                  {layout === "grid" ? "Masonry View" : "Grid View"}
-                </span>
-              </button>
+             
             </div>
           </div>
         </div>
       </header>
 
-      <main className="pt-16 sm:pt-20 px-4 sm:px-6 pb-8 sm:pb-12 max-w-[2000px] mx-auto">
+      <main className="pt-16 sm:pt-20 px-4 sm:px-6 pb-8 sm:pb-12">
         {loading ? (
           <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#1F1F3C]/50 backdrop-blur-sm z-30">
             <div className="relative">
@@ -504,28 +533,51 @@ const PhotoGallery = () => {
             <p className="text-lg sm:text-xl">No images found</p>
           </div>
         ) : (
-          <div
-            className={`grid gap-6 transition-all duration-300 ease-out ${
-              layout === "grid"
-                ? "gap-6 grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
-                : "gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
-            }`}
+          <div 
+            className="columns-2 lg:columns-3 xl:columns-4 2xl:columns-5 gap-2 sm:gap-4"
+            style={{
+              backgroundColor: '#1F1F3C',
+              columnRuleColor: 'transparent'
+            }}
           >
             {images
               .filter((image) => !showFavorites || favorites.includes(image.id))
-              .map((image, index) => (
+              .map((image, index) => {
+              const details = imageDetails[image.id] || {};
+              
+              return (
                 <div
                   key={image.id}
-                  className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-white/5 cursor-pointer transform hover:-translate-y-1 transition-all duration-300 border border-white/5 shadow-lg shadow-purple-900/20 animate-fadeIn"
+                  className={`
+                    break-inside-avoid mb-2 sm:mb-4
+                    relative group rounded-lg sm:rounded-xl overflow-hidden 
+                    cursor-pointer transition-transform duration-300 
+                    hover:-translate-y-1 border border-white/5 
+                    shadow-lg shadow-purple-900/20
+                    bg-[#1F1F3C]
+                  `}
                   onClick={() => handleImageClick(image)}
                 >
                   <LazyImage
                     src={image.url}
                     alt="gallery"
-                    className="object-cover w-full h-full transform group-hover:scale-110 transition-transform duration-500"
-                    onClick={() => setSelectedImage(image)}
+                    imageRef={el => {
+                      if (el && !imageDetails[image.id]) {
+                        const img = new Image();
+                        img.onload = () => {
+                          updateImageDetails(image.id, img.width, img.height);
+                        };
+                        img.src = image.url;
+                      }
+                    }}
+                    className="w-full"
+                    style={{
+                      height: 'auto',
+                      display: 'block'
+                    }}
                   />
-
+                  
+                  {/* Overlay controls (favorite, share buttons) remain the same */}
                   <div className="absolute bottom-1 left-1 z-10">
                     <button
                       onClick={(e) => {
@@ -607,9 +659,10 @@ const PhotoGallery = () => {
                       </svg>
                     </button>
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-purple-900/60 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 </div>
-              ))}
+              );
+            })}
           </div>
         )}
         <footer className="relative w-full backdrop-blur-sm border-t border-white/10 mt-8">

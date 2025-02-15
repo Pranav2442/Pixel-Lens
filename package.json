@@ -13,6 +13,7 @@
     "@aws-sdk/client-s3": "^3.744.0",
     "@aws-sdk/s3-request-presigner": "^3.744.0",
     "aws-sdk": "^2.1692.0",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
