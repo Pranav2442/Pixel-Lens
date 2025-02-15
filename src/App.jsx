@@ -5,7 +5,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { Camera, Grid, X, Maximize2, Minimize2 } from "lucide-react";
+import { Camera, Grid, X, Maximize2, Minimize2, Share2 } from "lucide-react";
 import {
   S3Client,
   ListObjectsV2Command,
@@ -153,7 +153,7 @@ const PhotoGallery = () => {
         });
       } else {
         await navigator.clipboard.writeText(shareUrl);
-        
+
         const tooltip = document.createElement("div");
         tooltip.textContent = "Link copied!";
         tooltip.className =
@@ -170,9 +170,9 @@ const PhotoGallery = () => {
     const aspectRatio = width / height;
 
     if (aspectRatio < 0.8) {
-      return { colSpan: 1, rowSpan: 2 }; 
+      return { colSpan: 1, rowSpan: 2 };
     } else if (aspectRatio > 1.8) {
-      return { colSpan: 2, rowSpan: 1 }; 
+      return { colSpan: 2, rowSpan: 1 };
     } else {
       return { colSpan: 1, rowSpan: 1 };
     }
@@ -709,6 +709,15 @@ const PhotoGallery = () => {
               >
                 <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
               </svg>
+            </button>
+
+            <button
+              onClick={(e) => handleShare(e, selectedImage)}
+              className="p-2 sm:p-3 bg-black/50 hover:bg-black/70 rounded-full transition-all duration-300
+                backdrop-blur-sm text-white/90 hover:text-white"
+              title="Share image"
+            >
+              <Share2 className="h-5 w-5 sm:h-6 sm:w-6" />
             </button>
 
             <button
