@@ -49,12 +49,26 @@ const AnimatedGradient = ({ text }) => {
   );
 };
 
-const LazyImage = ({ src, alt, className, onClick, onLoad, imageRef, style }) => {
+const LazyImage = ({
+  src,
+  alt,
+  className,
+  onClick,
+  onLoad,
+  imageRef,
+  style,
+  priority = false,
+}) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(false);
   const elementRef = useRef(null);
 
   useEffect(() => {
+    if (priority) {
+      setIsInView(true);
+      return;
+    }
+
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
@@ -78,7 +92,7 @@ const LazyImage = ({ src, alt, className, onClick, onLoad, imageRef, style }) =>
         observer.unobserve(elementRef.current);
       }
     };
-  }, []);
+  }, [priority]);
 
   const handleImageLoad = (e) => {
     setIsLoaded(true);
@@ -102,7 +116,7 @@ const LazyImage = ({ src, alt, className, onClick, onLoad, imageRef, style }) =>
           onClick={onClick}
           className={`
             w-full h-auto
-            ${!isLoaded ? 'opacity-0' : 'opacity-100'}
+            ${!isLoaded ? "opacity-0" : "opacity-100"}
             transition-opacity duration-500 ease-in-out
           `}
           loading="lazy"
@@ -110,8 +124,8 @@ const LazyImage = ({ src, alt, className, onClick, onLoad, imageRef, style }) =>
       )}
       {!isLoaded && isInView && (
         <div className="absolute inset-0 bg-[#1F1F3C] animate-pulse">
-        <div className="w-full h-full bg-white/5 rounded-lg" />
-      </div>
+          <div className="w-full h-full bg-white/5 rounded-lg" />
+        </div>
       )}
     </div>
   );
@@ -141,34 +155,78 @@ const PhotoGallery = () => {
   const [showFavorites, setShowFavorites] = useState(false);
   const [imageDetails, setImageDetails] = useState({});
   const [columns, setColumns] = useState(4);
+  const [sharedImageId, setSharedImageId] = useState(null);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const imageId = urlParams.get("image");
+    if (imageId) {
+      setSharedImageId(imageId);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sharedImageId && images.length > 0) {
+      const image = images.find((img) => img.id === sharedImageId);
+      if (image) {
+        handleImageClick(image);
+      }
+    }
+  }, [sharedImageId, images]);
+
+  const handleShare = async (e, image) => {
+    e.stopPropagation();
+    const shareUrl = `${window.location.origin}${
+      window.location.pathname
+    }?image=${encodeURIComponent(image.id)}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "✨ Found this gem on PixelLens",
+          text: "Explore the visual journey at PixelLens",
+          url: shareUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(shareUrl);
+        // Show copied notification
+        const tooltip = document.createElement("div");
+        tooltip.textContent = "Link copied!";
+        tooltip.className =
+          "fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-white/10 backdrop-blur-sm text-white px-4 py-2 rounded-lg z-50";
+        document.body.appendChild(tooltip);
+        setTimeout(() => tooltip.remove(), 2000);
+      }
+    } catch (error) {
+      console.error("Error sharing:", error);
+    }
+  };
 
   const calculateImageSpans = useCallback((width, height) => {
     const aspectRatio = width / height;
-    
-    
+
     if (aspectRatio < 0.8) {
       return { colSpan: 1, rowSpan: 2 }; // Take up 2 rows
-    }
-    
-    else if (aspectRatio > 1.8) {
+    } else if (aspectRatio > 1.8) {
       return { colSpan: 2, rowSpan: 1 }; // Take up 2 columns
-    }
-    
-    else {
+    } else {
       return { colSpan: 1, rowSpan: 1 };
     }
   }, []);
 
-  const updateImageDetails = useCallback((imageId, width, height) => {
-    setImageDetails(prev => ({
-      ...prev,
-      [imageId]: {
-        width,
-        height,
-        ...calculateImageSpans(width, height)
-      }
-    }));
-  }, [calculateImageSpans]);
+  const updateImageDetails = useCallback(
+    (imageId, width, height) => {
+      setImageDetails((prev) => ({
+        ...prev,
+        [imageId]: {
+          width,
+          height,
+          ...calculateImageSpans(width, height),
+        },
+      }));
+    },
+    [calculateImageSpans]
+  );
 
   const [favorites, setFavorites] = useState(() => {
     const savedFavorites = localStorage.getItem("pixelLens-favorites");
@@ -328,10 +386,16 @@ const PhotoGallery = () => {
 
   const isFavorite = (imageId) => favorites.includes(imageId);
 
-  const handleImageClick = async (image) => {
-    const fullSizeUrl = await getImageUrl(image.id, true);
-    setSelectedImage({ ...image, url: fullSizeUrl });
-  };
+  const handleImageClick = useCallback(async (image) => {
+    try {
+      setSelectedImage(image);
+      const newUrl = new URL(window.location);
+      newUrl.searchParams.set("image", image.id);
+      window.history.pushState({}, "", newUrl);
+    } catch (error) {
+      console.error("Error handling image click:", error);
+    }
+  }, []);
 
   const updateColumns = useCallback(() => {
     const width = window.innerWidth;
@@ -343,22 +407,24 @@ const PhotoGallery = () => {
 
   useEffect(() => {
     updateColumns();
-    window.addEventListener('resize', updateColumns);
-    return () => window.removeEventListener('resize', updateColumns);
+    window.addEventListener("resize", updateColumns);
+    return () => window.removeEventListener("resize", updateColumns);
   }, [updateColumns]);
 
   // Organize images into columns
   const columnedImages = useMemo(() => {
     if (!images.length) return [];
-    
+
     // Initialize columns
-    const cols = Array(columns).fill().map(() => []);
-    
+    const cols = Array(columns)
+      .fill()
+      .map(() => []);
+
     // Distribute images across columns
     images.forEach((image, index) => {
       cols[index % columns].push(image);
     });
-    
+
     return cols;
   }, [images, columns]);
 
@@ -468,7 +534,6 @@ const PhotoGallery = () => {
                   <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full sm:hidden" />
                 )}
               </button>
-             
             </div>
           </div>
         </div>
@@ -533,22 +598,22 @@ const PhotoGallery = () => {
             <p className="text-lg sm:text-xl">No images found</p>
           </div>
         ) : (
-          <div 
+          <div
             className="columns-2 lg:columns-3 xl:columns-4 2xl:columns-5 gap-2 sm:gap-4"
             style={{
-              backgroundColor: '#1F1F3C',
-              columnRuleColor: 'transparent'
+              backgroundColor: "#1F1F3C",
+              columnRuleColor: "transparent",
             }}
           >
             {images
               .filter((image) => !showFavorites || favorites.includes(image.id))
               .map((image, index) => {
-              const details = imageDetails[image.id] || {};
-              
-              return (
-                <div
-                  key={image.id}
-                  className={`
+                const details = imageDetails[image.id] || {};
+
+                return (
+                  <div
+                    key={image.id}
+                    className={`
                     break-inside-avoid mb-2 sm:mb-4
                     relative group rounded-lg sm:rounded-xl overflow-hidden 
                     cursor-pointer transition-transform duration-300 
@@ -556,113 +621,86 @@ const PhotoGallery = () => {
                     shadow-lg shadow-purple-900/20
                     bg-[#1F1F3C]
                   `}
-                  onClick={() => handleImageClick(image)}
-                >
-                  <LazyImage
-                    src={image.url}
-                    alt="gallery"
-                    imageRef={el => {
-                      if (el && !imageDetails[image.id]) {
-                        const img = new Image();
-                        img.onload = () => {
-                          updateImageDetails(image.id, img.width, img.height);
-                        };
-                        img.src = image.url;
-                      }
-                    }}
-                    className="w-full"
-                    style={{
-                      height: 'auto',
-                      display: 'block'
-                    }}
-                  />
-                  
-                  {/* Overlay controls (favorite, share buttons) remain the same */}
-                  <div className="absolute bottom-1 left-1 z-10">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const shareUrl =
-                          window.location.origin +
-                          "?image=" +
-                          encodeURIComponent(image.id);
-
-                        if (navigator.share) {
-                          navigator
-                            .share({
-                              title: "✨ Found this gem on PixelLens",
-                              text: "Explore the visual journey at PixelLens",
-                              url: shareUrl,
-                            })
-                            .catch(console.error);
-                        } else {
-                          navigator.clipboard
-                            .writeText(shareUrl)
-                            .then(() => {
-                              const tooltip = document.createElement("div");
-                              tooltip.textContent = "Link copied!";
-                              tooltip.className =
-                                "fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg z-50";
-                              document.body.appendChild(tooltip);
-                              setTimeout(() => tooltip.remove(), 2000);
-                            })
-                            .catch(console.error);
+                    onClick={() => handleImageClick(image)}
+                  >
+                    <LazyImage
+                      src={image.url}
+                      alt="gallery"
+                      imageRef={(el) => {
+                        if (el && !imageDetails[image.id]) {
+                          const img = new Image();
+                          img.onload = () => {
+                            updateImageDetails(image.id, img.width, img.height);
+                          };
+                          img.src = image.url;
                         }
                       }}
-                      className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full backdrop-blur-sm transition-colors group-hover:bg-black/70"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="text-white sm:w-4 sm:h-4"
+                      className="w-full"
+                      style={{
+                        height: "auto",
+                        display: "block",
+                      }}
+                      priority={image.id === sharedImageId}
+                    />
+
+                    <div className="absolute bottom-1 left-1 z-10">
+                      <button
+                        onClick={(e) => handleShare(e, image)}
+                        className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
+                        backdrop-blur-sm transition-colors group-hover:bg-black/70"
                       >
-                        <circle cx="18" cy="5" r="3" />
-                        <circle cx="6" cy="12" r="3" />
-                        <circle cx="18" cy="19" r="3" />
-                        <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                        <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                      </svg>
-                    </button>
-                  </div>
-                  <div className="absolute top-1 right-1 z-10">
-                    <button
-                      onClick={(e) => toggleFavorite(e, image.id)}
-                      className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-white sm:w-4 sm:h-4"
+                        >
+                          <circle cx="18" cy="5" r="3" />
+                          <circle cx="6" cy="12" r="3" />
+                          <circle cx="18" cy="19" r="3" />
+                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="absolute top-1 right-1 z-10">
+                      <button
+                        onClick={(e) => toggleFavorite(e, image.id)}
+                        className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
                     ${
                       isFavorite(image.id)
                         ? "bg-red-500/50 hover:bg-red-500/70"
                         : "bg-black/50 hover:bg-black/70"
                     }`}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className={`w-3 h-3 sm:w-4 sm:h-4 ${
-                          isFavorite(image.id) ? "text-white" : "text-white"
-                        }`}
                       >
-                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                      </svg>
-                    </button>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                            isFavorite(image.id) ? "text-white" : "text-white"
+                          }`}
+                        >
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                </div>
-              );
-            })}
+                );
+              })}
           </div>
         )}
         <footer className="relative w-full backdrop-blur-sm border-t border-white/10 mt-8">
