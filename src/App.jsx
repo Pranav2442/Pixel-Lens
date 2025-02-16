@@ -13,108 +13,15 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
-const LazyImage = ({
-  src,
-  alt,
-  className,
-  onClick,
-  onLoad,
-  imageRef,
-  style,
-  priority = false,
-}) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [isInView, setIsInView] = useState(false);
-  const elementRef = useRef(null);
-
-  // Preload high priority images
-  useEffect(() => {
-    if (priority && src) {
-      const img = new Image();
-      img.src = src;
-    }
-  }, [src, priority]);
-
-  useEffect(() => {
-    if (priority) {
-      setIsInView(true);
-      return;
-    }
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setIsInView(true);
-          observer.unobserve(entry.target);
-        }
-      },
-      {
-        root: null,
-        rootMargin: "50px",
-        threshold: 0.1,
-      }
-    );
-
-    if (elementRef.current) {
-      observer.observe(elementRef.current);
-    }
-
-    return () => {
-      if (elementRef.current) {
-        observer.unobserve(elementRef.current);
-      }
-    };
-  }, [priority]);
-
-  const handleImageLoad = (e) => {
-    setIsLoaded(true);
-    if (onLoad) {
-      onLoad(e);
-    }
-  };
-
-  return (
-    <div
-      ref={elementRef}
-      className={`relative bg-[#1F1F3C] ${className}`}
-      style={style}
-    >
-      {isInView && (
-        <img
-          ref={imageRef}
-          src={src}
-          alt={alt}
-          onLoad={handleImageLoad}
-          onClick={onClick}
-          className={`
-            w-full h-auto
-            ${!isLoaded ? "opacity-0" : "opacity-100"}
-            transition-opacity duration-500 ease-in-out
-          `}
-          loading={priority ? "eager" : "lazy"}
-          fetchpriority={priority ? "high" : "auto"}
-          decoding="async"
-        />
-      )}
-      {!isLoaded && isInView && (
-        <div className="absolute inset-0 bg-[#1F1F3C] animate-pulse">
-          <div className="w-full h-full bg-white/5 rounded-lg" />
-        </div>
-      )}
-    </div>
-  );
-};
-
 const createPersistentImageCache = () => {
-  const CACHE_KEY = 'pixelLens-imageCache';
-  
-  // Load initial cache from localStorage
+  const CACHE_KEY = "pixelLens-imageCache";
+
   const loadCache = () => {
     try {
       const savedCache = localStorage.getItem(CACHE_KEY);
       return savedCache ? JSON.parse(savedCache) : {};
     } catch (error) {
-      console.error('Error loading cache:', error);
+      console.error("Error loading cache:", error);
       return {};
     }
   };
@@ -126,7 +33,7 @@ const createPersistentImageCache = () => {
       const cacheObject = Object.fromEntries(cache);
       localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObject));
     } catch (error) {
-      console.error('Error saving cache:', error);
+      console.error("Error saving cache:", error);
     }
   };
 
@@ -140,24 +47,22 @@ const createPersistentImageCache = () => {
     clear: () => {
       cache.clear();
       localStorage.removeItem(CACHE_KEY);
-    }
+    },
   };
 };
-
 
 const imageUrlCache = createPersistentImageCache();
 const IMAGE_URL_EXPIRATION = 3600000;
 
 const cleanupCache = () => {
   const now = Date.now();
-  Array.from(imageUrlCache.keys()).forEach(key => {
+  Array.from(imageUrlCache.keys()).forEach((key) => {
     const entry = imageUrlCache.get(key);
     if (now - entry.timestamp > IMAGE_URL_EXPIRATION) {
       imageUrlCache.delete(key);
     }
   });
 };
-
 
 const PhotoGallery = () => {
   const [selectedImage, setSelectedImage] = useState(null);
@@ -166,8 +71,26 @@ const PhotoGallery = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lightboxRef = useRef(null);
   const [showFavorites, setShowFavorites] = useState(false);
-  const [imageDetails, setImageDetails] = useState({});
   const [sharedImageId, setSharedImageId] = useState(null);
+  const [loadedImages, setLoadedImages] = useState(new Set());
+  const [imageDimensions, setImageDimensions] = useState({});
+
+  const handleImageLoad = useCallback(
+    (imageId, naturalWidth, naturalHeight) => {
+      if (naturalWidth && naturalHeight) {
+        setLoadedImages((prev) => new Set([...prev, imageId]));
+        setImageDimensions((prev) => ({
+          ...prev,
+          [imageId]: {
+            width: naturalWidth,
+            height: naturalHeight,
+            aspectRatio: naturalHeight / naturalWidth,
+          },
+        }));
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     const cleanup = setInterval(cleanupCache, 3600000);
@@ -218,32 +141,6 @@ const PhotoGallery = () => {
       console.error("Error sharing:", error);
     }
   };
-
-  const calculateImageSpans = useCallback((width, height) => {
-    const aspectRatio = width / height;
-
-    if (aspectRatio < 0.8) {
-      return { colSpan: 1, rowSpan: 2 };
-    } else if (aspectRatio > 1.8) {
-      return { colSpan: 2, rowSpan: 1 };
-    } else {
-      return { colSpan: 1, rowSpan: 1 };
-    }
-  }, []);
-
-  const updateImageDetails = useCallback(
-    (imageId, width, height) => {
-      setImageDetails((prev) => ({
-        ...prev,
-        [imageId]: {
-          width,
-          height,
-          ...calculateImageSpans(width, height),
-        },
-      }));
-    },
-    [calculateImageSpans]
-  );
 
   const [favorites, setFavorites] = useState(() => {
     const savedFavorites = localStorage.getItem("pixelLens-favorites");
@@ -525,7 +422,7 @@ const PhotoGallery = () => {
         </div>
       </header>
 
-      <main className="pt-16 sm:pt-20 px-4 sm:px-6 pb-8 sm:pb-12">
+      <main className="pt-16 sm:pt-20 pb-8 sm:pb-12">
         {loading ? (
           <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#1F1F3C]/50 backdrop-blur-sm z-30">
             <div className="relative">
@@ -584,93 +481,136 @@ const PhotoGallery = () => {
             <p className="text-lg sm:text-xl">No images found</p>
           </div>
         ) : (
-          <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-2 sm:gap-4">
-    {images
-      .filter((image) => !showFavorites || favorites.includes(image.id))
-      .map((image, index) => (
-        <div
-          key={image.id}
-          className="relative group rounded-lg sm:rounded-xl overflow-hidden 
-                   cursor-pointer transition-transform duration-300 
-                   hover:-translate-y-1 border border-white/5 
-                   shadow-lg shadow-purple-900/20 bg-[#1F1F3C]
-                   break-inside-avoid mb-2 sm:mb-4 inline-block w-full"
-          onClick={() => handleImageClick(image)}
-        >
-          <LazyImage
-            src={image.url}
-            alt="gallery"
-            imageRef={(el) => {
-              if (el && !imageDetails[image.id]) {
-                const img = new Image();
-                img.onload = () => {
-                  updateImageDetails(image.id, img.width, img.height);
-                };
-                img.src = image.url;
-              }
-            }}
-            className="w-full"
-            style={{
-              height: "auto",
-              display: "block",
-            }}
-            priority={index < 4 || image.id === sharedImageId}
-          />
+          <div className="px-2">
+            <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-2 [column-fill:_balance]">
+              {images
+                .filter(
+                  (image) => !showFavorites || favorites.includes(image.id)
+                )
+                .map((image) => {
+                  const isLoaded = loadedImages.has(image.id);
+                  const dimensions = imageDimensions[image.id];
 
-          <div className="absolute bottom-1 left-1 z-10">
-            <button
-              onClick={(e) => handleShare(e, image)}
-              className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
-                       backdrop-blur-sm transition-colors group-hover:bg-black/70"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-white sm:w-4 sm:h-4"
-              >
-                <circle cx="18" cy="5" r="3" />
-                <circle cx="6" cy="12" r="3" />
-                <circle cx="18" cy="19" r="3" />
-                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-              </svg>
-            </button>
-          </div>
+                  return (
+                    <div
+                      key={image.id}
+                      className="relative group rounded-lg overflow-hidden 
+                     cursor-pointer transition-all duration-300 
+                     hover:-translate-y-1 border border-white/5 
+                     shadow-lg shadow-purple-900/20 bg-[#1F1F3C]
+                     break-inside-avoid mb-2 inline-block w-full"
+                      style={{ marginBottom: "4px" }}
+                      onClick={() => handleImageClick(image)}
+                    >
+                      <div
+                        className="relative w-full overflow-hidden"
+                        style={{
+                          paddingBottom: dimensions
+                            ? `${(dimensions.height / dimensions.width) * 100}%`
+                            : "100%",
+                        }}
+                      >
+                        <img
+                          src={image.url}
+                          alt="gallery"
+                          onLoad={(e) => {
+                            handleImageLoad(
+                              image.id,
+                              e.target.naturalWidth,
+                              e.target.naturalHeight
+                            );
+                          }}
+                          className={`absolute top-0 left-0 w-full h-full object-cover
+                          transition-opacity duration-500 ease-in-out
+                          ${isLoaded ? "opacity-100" : "opacity-0"}`}
+                        />
 
-          <div className="absolute top-1 right-1 z-10">
-            <button
-              onClick={(e) => toggleFavorite(e, image.id)}
-              className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
-                        ${isFavorite(image.id) ? 'bg-red-500/50 hover:bg-red-500/70' : 'bg-black/50 hover:bg-black/70'}`}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill={isFavorite(image.id) ? 'currentColor' : 'none'}
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-3 h-3 sm:w-4 sm:h-4 text-white"
-              >
-                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-              </svg>
-            </button>
+                        {!isLoaded && (
+                          <div className="absolute inset-0 bg-[#1F1F3C] animate-pulse">
+                            <div className="w-full h-full bg-white/5 rounded-lg" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="absolute bottom-2 left-1.5 z-10">
+                        <button
+                          onClick={(e) => handleShare(e, image)}
+                          className="p-2 bg-black/50 hover:bg-black/70 rounded-full 
+                         backdrop-blur-sm transition-colors group-hover:bg-black/70"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-white w-4 h-4"
+                          >
+                            <circle cx="18" cy="5" r="3" />
+                            <circle cx="6" cy="12" r="3" />
+                            <circle cx="18" cy="19" r="3" />
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="absolute top-2 right-1.5 z-10">
+                        {" "}
+                        {/* Fixed padding */}
+                        <button
+                          onClick={(e) => toggleFavorite(e, image.id)}
+                          className={`p-2 rounded-full backdrop-blur-sm transition-all duration-300 
+                          ${
+                            isFavorite(image.id)
+                              ? "bg-red-500/50 hover:bg-red-500/70"
+                              : "bg-black/50 hover:bg-black/70"
+                          }`}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill={
+                              isFavorite(image.id) ? "currentColor" : "none"
+                            }
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="w-4 h-4 text-white"
+                          >
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div>
+                        <div
+                          className="absolute inset-0 backdrop-blur-[4px] bg-[#1F1F3C]/40
+                  opacity-0 group-hover:opacity-100 
+                  transition-all duration-300"
+                        />
+                        <div
+                          className="absolute inset-[1px] border-[0.5px] border-white/10
+                  opacity-0 group-hover:opacity-100 
+                  scale-[1.02] group-hover:scale-100
+                  transition-all duration-500"
+                        />
+                        <div
+                          className="absolute inset-0 bg-gradient-to-br 
+                  from-purple-500/10 to-pink-500/10
+                  opacity-0 group-hover:opacity-100 
+                  transition-all duration-500 delay-75"
+                        />
+                      </div>{" "}
+                    </div>
+                  );
+                })}
+            </div>
           </div>
-          
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </div>
-      ))}
-  </div>
         )}
         <footer className="relative w-full backdrop-blur-sm border-t border-white/10 mt-8">
           <div className="container mx-auto px-4 py-3">
