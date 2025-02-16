@@ -531,7 +531,7 @@ const PhotoGallery = () => {
                           </div>
                         )}
                       </div>
-                      <div className="absolute bottom-2 left-1.5 z-10">
+                      <div className="absolute bottom-1 left-1 z-10">
                       <button
                         onClick={(e) => handleShare(e, image)}
                         className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
