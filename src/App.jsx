@@ -532,60 +532,58 @@ const PhotoGallery = () => {
                         )}
                       </div>
                       <div className="absolute bottom-2 left-1.5 z-10">
-                        <button
-                          onClick={(e) => handleShare(e, image)}
-                          className="p-2 bg-black/50 hover:bg-black/70 rounded-full 
-                         backdrop-blur-sm transition-colors group-hover:bg-black/70"
+                      <button
+                        onClick={(e) => handleShare(e, image)}
+                        className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
+                        backdrop-blur-sm transition-colors group-hover:bg-black/70"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-white sm:w-4 sm:h-4"
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="text-white w-4 h-4"
-                          >
-                            <circle cx="18" cy="5" r="3" />
-                            <circle cx="6" cy="12" r="3" />
-                            <circle cx="18" cy="19" r="3" />
-                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                          </svg>
-                        </button>
-                      </div>
-                      <div className="absolute top-2 right-1.5 z-10">
-                        {" "}
-                        {/* Fixed padding */}
-                        <button
-                          onClick={(e) => toggleFavorite(e, image.id)}
-                          className={`p-2 rounded-full backdrop-blur-sm transition-all duration-300 
-                          ${
-                            isFavorite(image.id)
-                              ? "bg-red-500/50 hover:bg-red-500/70"
-                              : "bg-black/50 hover:bg-black/70"
+                          <circle cx="18" cy="5" r="3" />
+                          <circle cx="6" cy="12" r="3" />
+                          <circle cx="18" cy="19" r="3" />
+                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                        </svg>
+                      </button>
+                    </div>
+                    <div className="absolute top-1 right-1 z-10">
+                      <button
+                        onClick={(e) => toggleFavorite(e, image.id)}
+                        className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
+                    ${
+                      isFavorite(image.id)
+                        ? "bg-red-500/50 hover:bg-red-500/70"
+                        : "bg-black/50 hover:bg-black/70"
+                    }`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                            isFavorite(image.id) ? "text-white" : "text-white"
                           }`}
                         >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill={
-                              isFavorite(image.id) ? "currentColor" : "none"
-                            }
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="w-4 h-4 text-white"
-                          >
-                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                          </svg>
-                        </button>
+                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                        </svg>
+                      </button>
                       </div>
                       <div>
                         <div
