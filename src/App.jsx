@@ -27,6 +27,14 @@ const LazyImage = ({
   const [isInView, setIsInView] = useState(false);
   const elementRef = useRef(null);
 
+  // Preload high priority images
+  useEffect(() => {
+    if (priority && src) {
+      const img = new Image();
+      img.src = src;
+    }
+  }, [src, priority]);
+
   useEffect(() => {
     if (priority) {
       setIsInView(true);
@@ -83,7 +91,9 @@ const LazyImage = ({
             ${!isLoaded ? "opacity-0" : "opacity-100"}
             transition-opacity duration-500 ease-in-out
           `}
-          loading="lazy"
+          loading={priority ? "eager" : "lazy"}
+          fetchpriority={priority ? "high" : "auto"}
+          decoding="async"
         />
       )}
       {!isLoaded && isInView && (
@@ -95,31 +105,74 @@ const LazyImage = ({
   );
 };
 
-const createImageCache = () => {
-  const cache = new Map();
+const createPersistentImageCache = () => {
+  const CACHE_KEY = 'pixelLens-imageCache';
+  
+  // Load initial cache from localStorage
+  const loadCache = () => {
+    try {
+      const savedCache = localStorage.getItem(CACHE_KEY);
+      return savedCache ? JSON.parse(savedCache) : {};
+    } catch (error) {
+      console.error('Error loading cache:', error);
+      return {};
+    }
+  };
+
+  const cache = new Map(Object.entries(loadCache()));
+
+  const saveCache = () => {
+    try {
+      const cacheObject = Object.fromEntries(cache);
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObject));
+    } catch (error) {
+      console.error('Error saving cache:', error);
+    }
+  };
 
   return {
     get: (key) => cache.get(key),
-    set: (key, value) => cache.set(key, value),
+    set: (key, value) => {
+      cache.set(key, value);
+      saveCache();
+    },
     has: (key) => cache.has(key),
-    clear: () => cache.clear(),
+    clear: () => {
+      cache.clear();
+      localStorage.removeItem(CACHE_KEY);
+    }
   };
 };
 
-const imageUrlCache = createImageCache();
+
+const imageUrlCache = createPersistentImageCache();
 const IMAGE_URL_EXPIRATION = 3600000;
+
+const cleanupCache = () => {
+  const now = Date.now();
+  Array.from(imageUrlCache.keys()).forEach(key => {
+    const entry = imageUrlCache.get(key);
+    if (now - entry.timestamp > IMAGE_URL_EXPIRATION) {
+      imageUrlCache.delete(key);
+    }
+  });
+};
+
 
 const PhotoGallery = () => {
   const [selectedImage, setSelectedImage] = useState(null);
-  const [layout, setLayout] = useState("grid");
   const [images, setImages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const lightboxRef = useRef(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [imageDetails, setImageDetails] = useState({});
-  const [columns, setColumns] = useState(4);
   const [sharedImageId, setSharedImageId] = useState(null);
+
+  useEffect(() => {
+    const cleanup = setInterval(cleanupCache, 3600000);
+    return () => clearInterval(cleanup);
+  }, []);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -361,37 +414,6 @@ const PhotoGallery = () => {
     }
   }, []);
 
-  const updateColumns = useCallback(() => {
-    const width = window.innerWidth;
-    if (width < 640) setColumns(1);
-    else if (width < 1024) setColumns(2);
-    else if (width < 1280) setColumns(3);
-    else setColumns(4);
-  }, []);
-
-  useEffect(() => {
-    updateColumns();
-    window.addEventListener("resize", updateColumns);
-    return () => window.removeEventListener("resize", updateColumns);
-  }, [updateColumns]);
-
-  // Organize images into columns
-  const columnedImages = useMemo(() => {
-    if (!images.length) return [];
-
-    // Initialize columns
-    const cols = Array(columns)
-      .fill()
-      .map(() => []);
-
-    // Distribute images across columns
-    images.forEach((image, index) => {
-      cols[index % columns].push(image);
-    });
-
-    return cols;
-  }, [images, columns]);
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1F1F3C] to-[#2D1B3D]">
       <header className="fixed top-0 left-0 right-0 z-40 bg-[#1F1F3C]/80 backdrop-blur-lg border-b border-white/10">
@@ -562,110 +584,93 @@ const PhotoGallery = () => {
             <p className="text-lg sm:text-xl">No images found</p>
           </div>
         ) : (
-          <div
-            className="columns-2 lg:columns-3 xl:columns-4 2xl:columns-5 gap-2 sm:gap-4"
-            style={{
-              backgroundColor: "#1F1F3C",
-              columnRuleColor: "transparent",
+          <div className="columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-2 sm:gap-4">
+    {images
+      .filter((image) => !showFavorites || favorites.includes(image.id))
+      .map((image, index) => (
+        <div
+          key={image.id}
+          className="relative group rounded-lg sm:rounded-xl overflow-hidden 
+                   cursor-pointer transition-transform duration-300 
+                   hover:-translate-y-1 border border-white/5 
+                   shadow-lg shadow-purple-900/20 bg-[#1F1F3C]
+                   break-inside-avoid mb-2 sm:mb-4 inline-block w-full"
+          onClick={() => handleImageClick(image)}
+        >
+          <LazyImage
+            src={image.url}
+            alt="gallery"
+            imageRef={(el) => {
+              if (el && !imageDetails[image.id]) {
+                const img = new Image();
+                img.onload = () => {
+                  updateImageDetails(image.id, img.width, img.height);
+                };
+                img.src = image.url;
+              }
             }}
-          >
-            {images
-              .filter((image) => !showFavorites || favorites.includes(image.id))
-              .map((image, index) => {
-                const details = imageDetails[image.id] || {};
+            className="w-full"
+            style={{
+              height: "auto",
+              display: "block",
+            }}
+            priority={index < 4 || image.id === sharedImageId}
+          />
 
-                return (
-                  <div
-                    key={image.id}
-                    className={`
-                    break-inside-avoid mb-2 sm:mb-4
-                    relative group rounded-lg sm:rounded-xl overflow-hidden 
-                    cursor-pointer transition-transform duration-300 
-                    hover:-translate-y-1 border border-white/5 
-                    shadow-lg shadow-purple-900/20
-                    bg-[#1F1F3C]
-                  `}
-                    onClick={() => handleImageClick(image)}
-                  >
-                    <LazyImage
-                      src={image.url}
-                      alt="gallery"
-                      imageRef={(el) => {
-                        if (el && !imageDetails[image.id]) {
-                          const img = new Image();
-                          img.onload = () => {
-                            updateImageDetails(image.id, img.width, img.height);
-                          };
-                          img.src = image.url;
-                        }
-                      }}
-                      className="w-full"
-                      style={{
-                        height: "auto",
-                        display: "block",
-                      }}
-                      priority={image.id === sharedImageId}
-                    />
-
-                    <div className="absolute bottom-1 left-1 z-10">
-                      <button
-                        onClick={(e) => handleShare(e, image)}
-                        className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
-                        backdrop-blur-sm transition-colors group-hover:bg-black/70"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-white sm:w-4 sm:h-4"
-                        >
-                          <circle cx="18" cy="5" r="3" />
-                          <circle cx="6" cy="12" r="3" />
-                          <circle cx="18" cy="19" r="3" />
-                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="absolute top-1 right-1 z-10">
-                      <button
-                        onClick={(e) => toggleFavorite(e, image.id)}
-                        className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
-                    ${
-                      isFavorite(image.id)
-                        ? "bg-red-500/50 hover:bg-red-500/70"
-                        : "bg-black/50 hover:bg-black/70"
-                    }`}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={`w-3 h-3 sm:w-4 sm:h-4 ${
-                            isFavorite(image.id) ? "text-white" : "text-white"
-                          }`}
-                        >
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  </div>
-                );
-              })}
+          <div className="absolute bottom-1 left-1 z-10">
+            <button
+              onClick={(e) => handleShare(e, image)}
+              className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
+                       backdrop-blur-sm transition-colors group-hover:bg-black/70"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-white sm:w-4 sm:h-4"
+              >
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+            </button>
           </div>
+
+          <div className="absolute top-1 right-1 z-10">
+            <button
+              onClick={(e) => toggleFavorite(e, image.id)}
+              className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
+                        ${isFavorite(image.id) ? 'bg-red-500/50 hover:bg-red-500/70' : 'bg-black/50 hover:bg-black/70'}`}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill={isFavorite(image.id) ? 'currentColor' : 'none'}
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="w-3 h-3 sm:w-4 sm:h-4 text-white"
+              >
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </button>
+          </div>
+          
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        </div>
+      ))}
+  </div>
         )}
         <footer className="relative w-full backdrop-blur-sm border-t border-white/10 mt-8">
           <div className="container mx-auto px-4 py-3">
