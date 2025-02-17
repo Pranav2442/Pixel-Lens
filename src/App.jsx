@@ -74,6 +74,79 @@ const PhotoGallery = () => {
   const [sharedImageId, setSharedImageId] = useState(null);
   const [loadedImages, setLoadedImages] = useState(new Set());
   const [imageDimensions, setImageDimensions] = useState({});
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true);
+  const lastScrollY = useRef(0);
+  const ticking = useRef(false);
+  const [visibleImages, setVisibleImages] = useState(new Set());
+  const observerRef = useRef(null);
+  const imageRefs = useRef({});
+
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const imageId = entry.target.dataset.imageId;
+          if (entry.isIntersecting) {
+            setVisibleImages((prev) => new Set([...prev, imageId]));
+          }
+        });
+      },
+      {
+        root: null,
+        rootMargin: "50px",
+        threshold: 0.1,
+      }
+    );
+
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const currentObserver = observerRef.current;
+
+    Object.entries(imageRefs.current).forEach(([id, element]) => {
+      if (element && !visibleImages.has(id)) {
+        currentObserver.observe(element);
+      }
+    });
+
+    return () => {
+      if (currentObserver) {
+        currentObserver.disconnect();
+      }
+    };
+  }, [images, visibleImages]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!ticking.current) {
+        window.requestAnimationFrame(() => {
+          const currentScrollY = window.scrollY;
+          if (Math.abs(currentScrollY - lastScrollY.current) > 5) {
+            if (currentScrollY < lastScrollY.current) {
+              setIsHeaderVisible(true);
+            } else {
+              if (currentScrollY > 50) {
+                setIsHeaderVisible(false);
+              }
+            }
+            lastScrollY.current = currentScrollY;
+          }
+
+          ticking.current = false;
+        });
+
+        ticking.current = true;
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const handleImageLoad = useCallback(
     (imageId, naturalWidth, naturalHeight) => {
@@ -313,7 +386,11 @@ const PhotoGallery = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-[#1F1F3C] to-[#2D1B3D]">
-      <header className="fixed top-0 left-0 right-0 z-40 bg-[#1F1F3C]/80 backdrop-blur-lg border-b border-white/10">
+      <header
+        className={`fixed top-0 left-0 right-0 z-40 bg-[#1F1F3C]/80 backdrop-blur-lg border-b border-white/10
+        transform transition-transform duration-300 ease-in-out
+        ${isHeaderVisible ? "translate-y-0" : "-translate-y-full"}`}
+      >
         <div className="w-full  mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2 sm:space-x-3">
@@ -370,7 +447,7 @@ const PhotoGallery = () => {
 
             <div className="flex items-center space-x-2">
               {" "}
-              <button
+              {/* <button
                 onClick={() => setShowFavorites(!showFavorites)}
                 className={`flex items-center space-x-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg 
                   transition-all duration-300 ease-out transform hover:scale-105 active:scale-95
@@ -416,7 +493,7 @@ const PhotoGallery = () => {
                 {favorites.length > 0 && !showFavorites && (
                   <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full sm:hidden" />
                 )}
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
@@ -490,10 +567,13 @@ const PhotoGallery = () => {
                 .map((image) => {
                   const isLoaded = loadedImages.has(image.id);
                   const dimensions = imageDimensions[image.id];
+                  const shouldLoad = visibleImages.has(image.id);
 
                   return (
                     <div
                       key={image.id}
+                      ref={(el) => (imageRefs.current[image.id] = el)}
+                      data-image-id={image.id}
                       className="relative group rounded-lg overflow-hidden 
                      cursor-pointer transition-all duration-300 
                      hover:-translate-y-1 border border-white/5 
@@ -510,80 +590,82 @@ const PhotoGallery = () => {
                             : "100%",
                         }}
                       >
-                        <img
-                          src={image.url}
-                          alt="gallery"
-                          onLoad={(e) => {
-                            handleImageLoad(
-                              image.id,
-                              e.target.naturalWidth,
-                              e.target.naturalHeight
-                            );
-                          }}
-                          className={`absolute top-0 left-0 w-full h-full object-cover
-                          transition-opacity duration-500 ease-in-out
-                          ${isLoaded ? "opacity-100" : "opacity-0"}`}
-                        />
+                        {shouldLoad && (
+                          <img
+                            src={image.url}
+                            alt="gallery"
+                            onLoad={(e) => {
+                              handleImageLoad(
+                                image.id,
+                                e.target.naturalWidth,
+                                e.target.naturalHeight
+                              );
+                            }}
+                            className={`absolute top-0 left-0 w-full h-full object-cover
+                    transition-opacity duration-500 ease-in-out
+                    ${isLoaded ? "opacity-100" : "opacity-0"}`}
+                          />
+                        )}
 
-                        {!isLoaded && (
+                        {(!shouldLoad || !isLoaded) && (
                           <div className="absolute inset-0 bg-[#1F1F3C] animate-pulse">
                             <div className="w-full h-full bg-white/5 rounded-lg" />
                           </div>
                         )}
                       </div>
                       <div className="absolute bottom-1 left-1 z-10">
-                      <button
-                        onClick={(e) => handleShare(e, image)}
-                        className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
+                        <button
+                          onClick={(e) => handleShare(e, image)}
+                          className="p-1.5 sm:p-2 bg-black/50 hover:bg-black/70 rounded-full 
                         backdrop-blur-sm transition-colors group-hover:bg-black/70"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-white sm:w-4 sm:h-4"
                         >
-                          <circle cx="18" cy="5" r="3" />
-                          <circle cx="6" cy="12" r="3" />
-                          <circle cx="18" cy="19" r="3" />
-                          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                          <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                        </svg>
-                      </button>
-                    </div>
-                    <div className="absolute top-1 right-1 z-10">
-                      <button
-                        onClick={(e) => toggleFavorite(e, image.id)}
-                        className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-white sm:w-4 sm:h-4"
+                          >
+                            <circle cx="18" cy="5" r="3" />
+                            <circle cx="6" cy="12" r="3" />
+                            <circle cx="18" cy="19" r="3" />
+                            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="absolute top-1 right-1 z-10">
+                        <button
+                          onClick={(e) => toggleFavorite(e, image.id)}
+                          className={`p-1.5 sm:p-2 rounded-full backdrop-blur-sm transition-all duration-300 
                     ${
                       isFavorite(image.id)
                         ? "bg-red-500/50 hover:bg-red-500/70"
                         : "bg-black/50 hover:bg-black/70"
                     }`}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className={`w-3 h-3 sm:w-4 sm:h-4 ${
-                            isFavorite(image.id) ? "text-white" : "text-white"
-                          }`}
                         >
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </button>
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className={`w-3 h-3 sm:w-4 sm:h-4 ${
+                              isFavorite(image.id) ? "text-white" : "text-white"
+                            }`}
+                          >
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                          </svg>
+                        </button>
                       </div>
                       <div>
                         <div
